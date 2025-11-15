@@ -33,18 +33,23 @@ async def receive_messages(websocket: websockets.ClientConnection, output_queue)
         accumulated_samples = 0
         last_seconds = 0
 
-        async for message_bytes in websocket:
-            msg = msgpack.unpackb(message_bytes)
+        try:
+            async for message_bytes in websocket:
+                msg = msgpack.unpackb(message_bytes)
 
-            if msg["type"] == "Audio":
-                pcm = np.array(msg["pcm"]).astype(np.float32)
-                await output_queue.put(pcm)
+                if msg["type"] == "Audio":
+                    pcm = np.array(msg["pcm"]).astype(np.float32)
+                    await output_queue.put(pcm)
 
-                accumulated_samples += len(msg["pcm"])
-                current_seconds = accumulated_samples // SAMPLE_RATE
-                if current_seconds > last_seconds:
-                    pbar.update(current_seconds - last_seconds)
-                    last_seconds = current_seconds
+                    accumulated_samples += len(msg["pcm"])
+                    current_seconds = accumulated_samples // SAMPLE_RATE
+                    if current_seconds > last_seconds:
+                        pbar.update(current_seconds - last_seconds)
+                        last_seconds = current_seconds
+        except websockets.ConnectionClosedError:
+            # Normal case: server closes the connection after finishing TTS.
+            # We still want to flush remaining audio and terminate cleanly.
+            pass
 
     print("End of audio.")
     await output_queue.put(None)  # Signal end of audio
